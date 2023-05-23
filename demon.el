@@ -44,22 +44,28 @@
 
 (defvar demon-regexps
   '(("C-g" . keyboard-quit)
-    ("^, ," . (lambda () (insert ",")))
-    ("^, <space>" . (lambda () (insert ", ")))
-    ("^, <return>" . (lambda () (insert ",\n")))
-    ("^< <" . (lambda () (insert "<")))
-    ("^< <space>" . (lambda () (insert "< ")))
-    ("^< <return>" . (lambda () (insert "<\n")))
+    ("^, ," . (lambda () (demon--do (insert ","))))
+    ("^, SPC" . (lambda () (demon--do (insert ", "))))
+    ("^, <return>" . (lambda () (demon--do (insert ",\n"))))
+    ("^< <" . (lambda () (demon--do (insert "<"))))
+    ("^< SPC" . (lambda () (demon--do (insert "< "))))
+    ("^< <return>" . (lambda () (demon--do (insert "<\n"))))
     ("^<" . ",")
     (", \\." . "M-")
     ("^, m" . "C-M-")
-    ("," . "C-")))
+    ("^, z" . "C-")
+    ("^, -" . demon-auto-control)
+    ("^," . "C-")
+    (" ," . " C-")))
 
 (defvar demon-repeats
   '(("^M-" "<" ">")
+    ("^\\([CM]\\|C-M\\)-" "v")
     ("^\\([CM]\\|C-M\\)-" "a" "e")
     ("^\\([CM]\\|C-M\\)-" "n" "p")
     ("^\\([CM]\\|C-M\\)-" "f" "b")
+    ("^C-x " "o")
+    ("^M-" "y")
     ("^C-" "_" "?")))
 
 (defvar demon-mode-map (make-sparse-keymap))
@@ -67,6 +73,7 @@
   (let ((map (make-keymap)))
     (set-char-table-range (nth 1 map) t #'demon--next)
     map))
+(defvar demon--auto-control nil)
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
 (defvar demon--keys "")
@@ -83,10 +90,15 @@
 
 (defun demon (arg)
   (interactive "P")
+  (setq demon--auto-control nil)
   (setq demon--last-command last-command)
   (setq demon--prefix-argument arg)
   (setq demon--keys (key-description (this-command-keys)))
   (set-transient-map demon--transient-map))
+
+(defun demon-auto-control ()
+  (setq demon--auto-control t)
+  "C-")
 
 (defun demon--next ()
   (interactive)
@@ -98,28 +110,47 @@
     (demon--try-keys)))
 
 (defun demon--append-keys (keys)
-  (setq demon--keys (concat demon--keys " " (key-description keys)))
-  (setq demon--keys (string-replace "- " "-" demon--keys))
-  (setq demon--keys (string-replace "RET" "<return>" demon--keys))
-  (setq demon--keys (string-replace "SPC" "<space>" demon--keys))
-  (setq demon--keys (string-replace "TAB" "<tab>" demon--keys)))
+  (let ((description (key-description keys)))
+    (when (and demon--auto-control (not (string= demon--keys "C-")))
+      (setq description (concat "C-" description)))
+    (setq demon--keys (concat demon--keys " " description))
+    (demon--fix-keys)))
+
+(defun demon--fix-keys ()
+  (setq demon--keys (replace-regexp-in-string "\\([^-]\\)- " "\\1-" demon--keys))
+  ;; (dolist (key '(("RET" . "<return>")
+  ;; 		 ("DEL" . "<backspace>")
+  ;; 		 ("SPC" . "<space>")
+  ;; 		 ("TAB" . "<tab>")))
+  ;;   (let* ((from (car key))
+  ;; 	   (to (cdr key))
+  ;; 	   (regexp (concat "\\([CASHs]-[^ ]*\\)" from)))
+  ;;     (message "%S %S" demon--keys regexp)
+  ;;     (setq demon--keys
+  ;; 	    (replace-regexp-in-string regexp (concat "\\1" to) demon--keys t))))
+  )
 
 (defun demon--translate-keys ()
   (catch 'match
-    (dolist (regexp-action demon-regexps)
-      (let ((keys (concat demon--keys " "))
-	    (regexp (car regexp-action))
-	    (action (cdr regexp-action)))
-	(when (string-match-p (concat regexp " ") keys)
-	  (throw 'match
-		 ;; Perform replacement or call custom function.
-		 (if (stringp action)
-		     (setq demon--keys
-			   (replace-regexp-in-string regexp action demon--keys))
-		   (setq demon--keys (funcall action))))))))
+    (let ((keys (concat demon--keys " ")))
+      (dolist (regexp-action demon-regexps)
+	(let ((regexp (car regexp-action))
+	      (action (cdr regexp-action)))
+	  (when (string-match-p (concat regexp " ") keys)
+	    (throw 'match
+		   ;; Perform replacement or call custom function.
+		   (if (stringp action)
+		       (setq demon--keys
+			     (replace-regexp-in-string regexp action demon--keys))
+		     (setq demon--keys (funcall action)))))))))
   (when demon--keys
-    (setq demon--keys (string-replace "- " "-" demon--keys)))
+    (demon--fix-keys))
   demon--keys)
+
+(defmacro demon--do (&rest body)
+  `(if multiple-cursors-mode
+       (mc/execute-command-for-all-cursors (lambda () (interactive) ,@body))
+     ,@body))
 
 (defun demon--try-keys ()
   (let ((binding (condition-case nil (key-binding (kbd demon--keys)) (error nil))))
@@ -127,13 +158,12 @@
 	   (let ((current-prefix-arg demon--prefix-argument))
 	     (setq last-command demon--last-command)
 	     (setq this-command binding)
-	     (if multiple-cursors-mode
-		 (mc/execute-command-for-all-cursors binding)
-	       (call-interactively binding t)))
+	     (setq this-original-command binding)
+	     (run-hooks 'pre-command-hook)
+	     (call-interactively binding t))
 	   (demon--try-repeat))
-	  ((or (not binding)
-	       (keymapp binding)
-	       (string-match-p "-$" demon--keys))
+	  ((or (keymapp binding)
+	       (string-match-p "[^-]-$" demon--keys))
 	   (set-transient-map demon--transient-map))
 	  (t
 	   (message "Demon: %s is undefined" demon--keys)))))
