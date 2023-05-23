@@ -6,7 +6,7 @@
 ;; Maintainer: John Ankarström <john@ankarstrom.se>
 ;; Version: 0.1
 ;; Keywords: convenience, abbrev
-;; URL: https://github.com/jocap/demon
+;; URL: https://github.com/jocap/demon.el
 
 ;; This file is not part of GNU Emacs.
 
