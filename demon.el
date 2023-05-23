@@ -38,7 +38,8 @@
 
 ;;; Code:
 
-(defvar demon-activators (list "," "<"))
+(defvar demon-mode-map (make-sparse-keymap))
+(defvar demon-activators (list ","))
 (dolist (activator demon-activators)
   (define-key demon-mode-map activator #'demon))
 
@@ -47,10 +48,6 @@
     ("^, ," . (lambda () (demon--do (insert ","))))
     ("^, SPC" . (lambda () (demon--do (insert ", "))))
     ("^, <return>" . (lambda () (demon--do (insert ",\n"))))
-    ("^< <" . (lambda () (demon--do (insert "<"))))
-    ("^< SPC" . (lambda () (demon--do (insert "< "))))
-    ("^< <return>" . (lambda () (demon--do (insert "<\n"))))
-    ("^<" . ",")
     (", \\." . "M-")
     ("^, m" . "C-M-")
     ("^, z" . "C-")
@@ -68,7 +65,6 @@
     ("^M-" "y")
     ("^C-" "_" "?")))
 
-(defvar demon-mode-map (make-sparse-keymap))
 (defvar demon--transient-map
   (let ((map (make-keymap)))
     (set-char-table-range (nth 1 map) t #'demon--next)
