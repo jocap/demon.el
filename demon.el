@@ -39,7 +39,7 @@
 ;;; Code:
 
 (defvar demon-mode-map (make-sparse-keymap))
-(defvar demon-activators (list ","))
+(defvar demon-activators (list "," "."))
 (dolist (activator demon-activators)
   (define-key demon-mode-map activator #'demon))
 
@@ -48,6 +48,13 @@
     ("^, ," . (lambda () (demon--do (insert ","))))
     ("^, SPC" . (lambda () (demon--do (insert ", "))))
     ("^, <return>" . (lambda () (demon--do (insert ",\n"))))
+    (", \\." . "M-")
+    ("^\\. \\." . (lambda () (demon--do (insert "."))))
+    ("^\\. SPC" . (lambda () (demon--do (insert ". "))))
+    ("^\\. <return>" . (lambda () (demon--do (insert ".\n"))))
+    ("^\\. ," . (lambda () (demon--do (insert ".")) "C-"))
+    ("^\\. \\\"" . (lambda () (demon--do (insert ".\""))))
+    ("^\\." . "M-")
     (", \\." . "M-")
     ("^, m" . "C-M-")
     ("^, z" . "C-")
