@@ -55,14 +55,21 @@
     ("^," . "C-")
     (" ," . " C-")))
 
+;; Perhaps all replacements should be performed, and not just the
+;; first that matches. Or perhaps demon--keys should be left intact,
+;; if it does not match an existing command.
+
 (defvar demon-repeats
   '(("^M-" "<" ">")
     ("^\\([CM]\\|C-M\\)-" "v")
     ("^\\([CM]\\|C-M\\)-" "a" "e")
     ("^\\([CM]\\|C-M\\)-" "n" "p")
     ("^\\([CM]\\|C-M\\)-" "f" "b")
+    ("^\\([CM]\\|C-M\\)-" "k")
     ("^\\([CM]-\\|C-M-\\|C-x \\)" "DEL")
     ("^C-x " "o")
+    ("^C-" "l")
+    ("^M-" "r")
     ("^M-" "y")
     ("^C-" "_" "?")))
 
@@ -80,6 +87,8 @@
   "Local minor mode for Demon key sequences."
   :lighter " Demon"
   :keymap demon-mode-map)
+
+;; TODO: term-mode support
 
 ;;;###autoload
 (define-globalized-minor-mode
