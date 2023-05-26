@@ -56,19 +56,37 @@
   (define-key demon-mode-map activator #'demon))
 
 (defvar demon-pre-regexps
-  '(("C-g" . (lambda (keys) (keyboard-quit)))
-    ("^, ," . (lambda (keys) (demon--do (insert ",")) (signal 'demon--quit nil)))
-    ("^, SPC" . (lambda (keys) (demon--do (insert ", ")) (signal 'demon--quit nil)))
-    ("^, RET" . (lambda (keys) (demon--do (insert ",\n")) (signal 'demon--quit nil)))
-    (", m " . "C-M-")
+  '(("C-g" . keyboard-quit)
+    ("^, ," . (lambda () (demon--do (insert ",")) (signal 'demon--quit nil)))
+    ("^, SPC" . (lambda () (demon--do (insert ", ")) (signal 'demon--quit nil)))
+    ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
     ("^, z " . "C-")
-    (", - .*" . (lambda (keys)
-		(setq keys (replace-regexp-in-string "^, - " "C-" keys))
-		(setq keys (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" keys t))))
+    (", m " . "C-M-")
+    (", - .*" .
+     (lambda ()
+       (setq demon-current-keys
+	     (replace-regexp-in-string "^, - " "C-" demon-current-keys))
+       (setq demon-current-keys
+	     (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" demon-current-keys t))))
     (", \\. " . "M-")
     (", " . "C-")))
 
-(defvar demon-post-regexps nil)
+(defvar demon-post-regexps
+  '(("\\([MsCASH]-\\)+[MsCASH]-" .
+     (lambda ()
+       "Fix incorrect modifier prefixes."
+       (let ((string (match-string 0 demon-current-keys))
+	     (modifiers))
+	 (dolist (modifier '("A" "C" "H" "M" "S" "s"))
+	   (when (string-match-p modifier string)
+	     (push modifier modifiers)))
+	 (setq demon-current-keys
+	       (replace-regexp-in-string demon-current-regexp
+					 (concat
+					  (string-join (nreverse modifiers) "-")
+					  "-")
+					 demon-current-keys
+					 t)))))))
 
 (defmacro demon--do (&rest body)
   `(if multiple-cursors-mode
@@ -85,8 +103,10 @@
     ("^C-" "_" "?")
     ("^C-" "l")
     ("^C-" "d")
+    ("^C-" "SPC")
     ("^M-" "<" ">")
     ("^M-" "{" "}")
+    ("^M-" "(" ")")
     ("^M-" "r")
     ("^[CM]-" "y")
     ("^C-x " "[" "]")
@@ -100,6 +120,9 @@
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
 (defvar demon--keys "")
+
+(defvar demon-current-keys "")
+(defvar demon-current-regexp "")
 
 ;;;###autoload
 (define-minor-mode demon-mode
@@ -133,16 +156,21 @@
     (demon--quit nil)))
 
 (defun demon--translate-keys (keys)
-  (dolist (regexps (list demon-pre-regexps demon-post-regexps))
-    (dolist (regexp-action regexps)
-      (let ((regexp (car regexp-action))
-	    (action (cdr regexp-action)))
-	(when (string-match-p regexp keys)
+  (let ((demon-current-keys keys))
+    (dolist (regexps (list demon-pre-regexps demon-post-regexps))
+      (dolist (regexp-action regexps)
+	(let ((demon-current-regexp (car regexp-action))
+	      (action (cdr regexp-action)))
 	  ;; Perform replacement or call custom function.
-	  (if (stringp action)
-	      (setq keys (replace-regexp-in-string regexp action keys))
-	    (setq keys (replace-regexp-in-string regexp (funcall action keys) keys)))))))
-  keys)
+	  (save-match-data
+	    (when (string-match demon-current-regexp demon-current-keys)
+	      (if (stringp action)
+		  (setq demon-current-keys
+			(replace-regexp-in-string demon-current-regexp
+						  action
+						  demon-current-keys))
+		(funcall action)))))))
+    demon-current-keys))
 
 (defun demon--try-keys (keys)
   (setq keys (replace-regexp-in-string " $" "" keys))
