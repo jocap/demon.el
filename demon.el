@@ -183,7 +183,9 @@
 	    (throw 'match t)))))))
 
 (defun demon--show-repeat (prefix suffixes)
-  (message "%s%s" prefix suffixes))
+  (if demon--prefix-argument
+	    (message "%S %s%s" demon--prefix-argument prefix suffixes)
+	  (message "%s%s" prefix suffixes)))
 
 (provide 'demon)
 ;;; demon.el ends here
