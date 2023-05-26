@@ -58,13 +58,13 @@
   "List of keys that activate `demon' when `demon-mode' is active.")
 (dolist (activator demon-activators)
   (define-key demon-mode-map activator #'demon))
+(define-key demon-mode-map (kbd "C-z") #'set-mark-command)
 
 (defvar demon-pre-regexps
   '(("C-g" . keyboard-quit)
     ("^, ," . (lambda () (demon--do (insert ",")) (signal 'demon--quit nil)))
     ("^, SPC" . (lambda () (demon--do (insert ", ")) (signal 'demon--quit nil)))
     ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
-    ("^, z " . "C-")
     (", m " . "C-M-")
     (", - .*" .
      (lambda ()
@@ -122,17 +122,19 @@ replacements/functions that are applied after the application of
     ("^\\([CM]\\|C-M\\)-" "f" "b")
     ("^\\([CM]\\|C-M\\)-" "k")
     ("^\\([CM]-\\|C-M-\\|C-x \\)" "DEL")
+    ("^[CM]-" "y")
+    ("^[CM]-" "d")
     ("^C-" "_" "?")
     ("^C-" "l")
-    ("^C-" "d")
     ("^C-" "SPC")
+    ("^C-" "z")
     ("^M-" "<" ">")
     ("^M-" "{" "}")
     ("^M-" "(" ")")
     ("^M-" "r")
-    ("^[CM]-" "y")
     ("^C-x " "[" "]")
-    ("^C-x " "o")))
+    ("^C-x " "o"))
+  "Association list of prefixes and repetable suffixes.")
 
 (defvar demon--transient-map
   (let ((map (make-keymap)))
