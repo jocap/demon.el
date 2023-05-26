@@ -154,7 +154,6 @@
     (setq last-command demon--last-command)
     (setq this-command command)
     (setq this-original-command command)
-    ;; (run-hooks 'pre-command-hook)
     (call-interactively command t)))
 
 (defun demon--try-repeat (keys)
@@ -175,6 +174,7 @@
 			    (binding (key-binding (kbd keys))))
 		  (define-key map (kbd suffix) (lambda ()
 						 (interactive)
+						 (setq demon--last-command last-command)
 						 (demon--show-repeat real-prefix suffixes)
 						 (demon--run binding)))))
 	      (unless (equal map '(keymap))
