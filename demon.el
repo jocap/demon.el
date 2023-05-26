@@ -32,8 +32,18 @@
 
 ;;; Commentary:
 
-;;; Inspired by devil.el by Susam Pal
-;;; (https://github.com/susam/devil).
+;; Inspired by devil.el by Susam Pal (https://github.com/susam/devil).
+
+;; Demon differs from Devil in two important ways. First, the key
+;; translation is powered by regular expressions. Second, it supports
+;; "associated" repeated keys -- e.g., after typing , n (C-n), one can
+;; keep pressing n to keep issuiing C-n or p to issue C-p.
+
+;; Regular expressions make advanced functionality possible, such as
+;; the included "auto control" mode, whereby prefixing a command with
+;; , - automatically adds a control modifier to all following key
+;; presses. This makes it possible to issue C-x C-s by typing , - x s,
+;; rather than , x , s.
 
 
 ;;; Code:
@@ -70,20 +80,21 @@
 ;; if it does not match an existing command.
 
 (defvar demon-repeats
-  '(("^M-" "<" ">")
-    ("^M-" "{" "}")
-    ("^\\([CM]\\|C-M\\)-" "v")
+  '(("^\\([CM]\\|C-M\\)-" "v")
     ("^\\([CM]\\|C-M\\)-" "a" "e")
     ("^\\([CM]\\|C-M\\)-" "n" "p")
     ("^\\([CM]\\|C-M\\)-" "f" "b")
     ("^\\([CM]\\|C-M\\)-" "k")
     ("^\\([CM]-\\|C-M-\\|C-x \\)" "DEL")
-    ("^C-x " "[" "]")
-    ("^C-x " "o")
+    ("^C-" "_" "?")
     ("^C-" "l")
+    ("^C-" "d")
+    ("^M-" "<" ">")
+    ("^M-" "{" "}")
     ("^M-" "r")
-    ("^M-" "y")
-    ("^C-" "_" "?")))
+    ("^[CM]-" "y")
+    ("^C-x " "[" "]")
+    ("^C-x " "o")))
 
 (defvar demon--transient-map
   (let ((map (make-keymap)))
