@@ -48,10 +48,14 @@
 
 ;;; Code:
 
+;; Functions in `demon-{pre|post}-regexps' may signal 'demon--quit to
+;; cancel the currently entered Demon key.
 (define-error 'demon--quit "Quit Demon")
 
 (defvar demon-mode-map (make-sparse-keymap))
-(defvar demon-activators (list ","))
+
+(defvar demon-activators (list ",")
+  "List of keys that activate `demon' when `demon-mode' is active.")
 (dolist (activator demon-activators)
   (define-key demon-mode-map activator #'demon))
 
@@ -69,7 +73,22 @@
        (setq demon-current-keys
 	     (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" demon-current-keys t))))
     (", \\. " . "M-")
-    (", " . "C-")))
+    (", " . "C-"))
+  "Association list of regular expressions and
+replacements/functions that are applied to the keys entered when
+`demon' is called. See also `demon-post-regexps'.
+
+The list consists of cons cells, the car of which is a regular
+expression and the cdr of which is either a string or a function.
+If it is a string, then it is used as a replacement for the key
+combination matched by the regular expression.
+
+If it is a function, the function is called when the regular
+expression matches. No replacement is made by default, but the
+called function has access to the dynamically bound variables
+`demon-current-regexp', containing the regular expression, and
+`demon-current-keys', containing the key string currently
+processed, which may be modified by the function.")
 
 (defvar demon-post-regexps
   '(("\\([MsCASH]-\\)+[MsCASH]-" .
@@ -86,7 +105,10 @@
 					  (string-join (nreverse modifiers) "-")
 					  "-")
 					 demon-current-keys
-					 t)))))))
+					 t))))))
+  "Association list of regular expressions and
+replacements/functions that are applied after the application of
+`demon-pre-regexps'.")
 
 (defmacro demon--do (&rest body)
   `(if multiple-cursors-mode
@@ -121,8 +143,12 @@
 (defvar demon--prefix-argument nil)
 (defvar demon--keys "")
 
-(defvar demon-current-keys "")
-(defvar demon-current-regexp "")
+(defvar demon-current-keys ""
+  "The Demon key string currently processed, available to functions
+in `demon-pre-regexps' and `demon-post-regexps'.")
+(defvar demon-current-regexp ""
+  "The currently matching regular expression, available to
+functions in `demon-pre-regexps' and `demon-post-regexps'.")
 
 ;;;###autoload
 (define-minor-mode demon-mode
