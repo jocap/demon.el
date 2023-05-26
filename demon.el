@@ -75,10 +75,6 @@
        (mc/execute-command-for-all-cursors (lambda () (interactive) ,@body))
      ,@body))
 
-;; Perhaps all replacements should be performed, and not just the
-;; first that matches. Or perhaps demon--keys should be left intact,
-;; if it does not match an existing command.
-
 (defvar demon-repeats
   '(("^\\([CM]\\|C-M\\)-" "v")
     ("^\\([CM]\\|C-M\\)-" "a" "e")
