@@ -71,10 +71,10 @@
     (", m " . "C-M-")
     (", - .*" .
      (lambda ()
-       (setq demon-current-keys
-	     (replace-regexp-in-string "^, - " "C-" demon-current-keys))
-       (setq demon-current-keys
-	     (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" demon-current-keys t))))
+       (let ((string (match-string 0 demon-current-keys)))
+	 (setq string (replace-regexp-in-string "^, - " "C-" string))
+	 (setq string (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" string t))
+	 (setq demon-current-keys (replace-match string t nil demon-current-keys)))))
     (", \\. " . "M-")
     (", " . "C-"))
   "Association list of regular expressions and
