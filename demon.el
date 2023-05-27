@@ -114,7 +114,7 @@ replacements/functions that are applied after the application of
 `demon-pre-regexps'.")
 
 (defmacro demon--do (&rest body)
-  `(if multiple-cursors-mode
+  `(if (and (boundp 'multiple-cursors-mode) multiple-cursors-mode)
        (mc/execute-command-for-all-cursors (lambda () (interactive) ,@body))
      ,@body))
 
