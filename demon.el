@@ -65,6 +65,7 @@
 
 (defvar demon-pre-regexps
   '(("C-g" . keyboard-quit)
+    ("ESC" . (lambda () (signal 'demon--quit nil)))
     ("^, ," . (lambda () (demon--do (insert ",")) (signal 'demon--quit nil)))
     ("^, SPC" . (lambda () (demon--do (insert ", ")) (signal 'demon--quit nil)))
     ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
@@ -251,7 +252,10 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 		    (define-key map key
 		      (demon--do-repeat real-prefix suffixes binding))))
 		(demon--show-repeat real-prefix suffixes)
-		(set-transient-map map t)))
+		(let ((exit (set-transient-map map t)))
+		  (define-key map (kbd "ESC") (lambda ()
+						(interactive)
+						(funcall exit))))))
 	    (throw 'match t)))))))
 
 (defun demon--do-repeat (real-prefix suffixes binding)
