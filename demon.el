@@ -57,7 +57,10 @@
 (defvar demon-activators (list ",")
   "List of keys that activate `demon' when `demon-mode' is active.")
 (dolist (activator demon-activators)
-  (define-key demon-mode-map activator #'demon))
+  (define-key demon-mode-map activator #'demon)
+  ;; TODO: support `query-replace-map'
+  ;; (define-key query-replace-map activator #'demon)
+  )
 (define-key demon-mode-map (kbd "C-z") #'set-mark-command)
 
 (defvar demon-pre-regexps
@@ -114,6 +117,11 @@ replacements/functions that are applied after the application of
   `(if multiple-cursors-mode
        (mc/execute-command-for-all-cursors (lambda () (interactive) ,@body))
      ,@body))
+
+(defvar demon-allow-between-repeats
+  (list (kbd "TAB") (kbd "<tab>"))
+  "List of key bindings to allow between repeats (see
+`demon-repeats') without cancelling the active repeat map.")
 
 (defvar demon-repeats
   '(("^\\([CM]\\|C-M\\)-" "v")
@@ -235,15 +243,23 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 	      (dolist (suffix suffixes)
 		(when-let* ((keys (concat real-prefix suffix))
 			    (binding (key-binding (kbd keys))))
-		  (define-key map (kbd suffix) (lambda ()
-						 (interactive)
-						 (setq demon--last-command last-command)
-						 (demon--show-repeat real-prefix suffixes)
-						 (demon--run binding)))))
+		  (define-key map (kbd suffix)
+		    (demon--do-repeat real-prefix suffixes binding))))
 	      (unless (equal map '(keymap))
+		(dolist (key demon-allow-between-repeats)
+		  (when-let ((binding (key-binding key)))
+		    (define-key map key
+		      (demon--do-repeat real-prefix suffixes binding))))
 		(demon--show-repeat real-prefix suffixes)
 		(set-transient-map map t)))
 	    (throw 'match t)))))))
+
+(defun demon--do-repeat (real-prefix suffixes binding)
+  (lambda ()
+    (interactive)
+    (setq demon--last-command last-command)
+    (demon--show-repeat real-prefix suffixes)
+    (demon--run binding)))
 
 (defun demon--show-repeat (prefix suffixes)
   (if demon--prefix-argument
