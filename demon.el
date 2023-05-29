@@ -69,14 +69,15 @@
     ("^, ," . (lambda () (demon--do (insert ",")) (signal 'demon--quit nil)))
     ("^, SPC" . (lambda () (demon--do (insert ", ")) (signal 'demon--quit nil)))
     ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
-    (", m " . "C-M-")
+    (", m n " . "C-M-")
     (", - .*" .
      (lambda ()
        (let ((string (match-string 0 demon-current-keys)))
 	 (setq string (replace-regexp-in-string "^, - " "C-" string))
 	 (setq string (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" string t))
 	 (setq demon-current-keys (replace-match string t nil demon-current-keys)))))
-    (", \\. " . "M-")
+    (", m " . "M-")
+    (", \\. " . "C-M-")
     (", " . "C-"))
   "Association list of regular expressions and
 replacements/functions that are applied to the keys entered when
@@ -120,7 +121,7 @@ replacements/functions that are applied after the application of
      ,@body))
 
 (defvar demon-allow-between-repeats
-  (list (kbd "TAB") (kbd "<tab>"))
+  (list (kbd "TAB") (kbd "<tab>") (kbd "RET") (kbd "<return>"))
   "List of key bindings to allow between repeats (see
 `demon-repeats') without cancelling the active repeat map.")
 
@@ -153,6 +154,7 @@ replacements/functions that are applied after the application of
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
 (defvar demon--keys "")
+(defvar demon--lighter " Demon")
 
 (defvar demon-current-keys ""
   "The Demon key string currently processed, available to functions
@@ -164,7 +166,7 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 ;;;###autoload
 (define-minor-mode demon-mode
   "Local minor mode for Demon key sequences."
-  :lighter " Demon"
+  :lighter (:eval demon--lighter)
   :keymap demon-mode-map)
 
 ;; TODO: term-mode support
@@ -179,7 +181,13 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
   (setq demon--last-command last-command)
   (setq demon--prefix-argument arg)
   (setq demon--keys (concat (key-description (this-command-keys)) " "))
+  (setq demon--lighter " Demon*")
+  (force-mode-line-update)
   (set-transient-map demon--transient-map))
+
+(defun demon--end ()
+  (setq demon--lighter " Demon")
+  (force-mode-line-update))
 
 (defun demon--next ()
   (interactive)
@@ -190,7 +198,8 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 	    (message "%S %s" demon--prefix-argument desc)
 	  (message "%s" desc))
 	(demon--try-keys desc))
-    (demon--quit nil)))
+    (demon--quit (demon--end))
+    (quit (demon--end))))
 
 (defun demon--translate-keys (keys)
   (let ((demon-current-keys keys))
@@ -214,12 +223,14 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
   (let ((binding (condition-case nil (key-binding (kbd keys)) (error nil))))
     (cond ((commandp binding)
 	   (demon--run binding)
-	   (demon--try-repeat keys))
+	   (unless (demon--try-repeat keys)
+	     (demon--end)))
 	  ((or (keymapp binding)
 	       (string-match-p "[^-]-$" keys))
 	   (set-transient-map demon--transient-map))
 	  (t
-	   (message "Demon: %s is undefined" keys)))))
+	   (message "Demon: %s is undefined" keys)
+	   (demon--end)))))
 
 (defun demon--run (command)
   (let ((current-prefix-arg demon--prefix-argument))
@@ -246,16 +257,20 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 			    (binding (key-binding (kbd keys))))
 		  (define-key map (kbd suffix)
 		    (demon--do-repeat real-prefix suffixes binding))))
-	      (unless (equal map '(keymap))
+	      (if (equal map '(keymap))
+		  (throw 'match nil)
+		(setq demon--lighter " Demon+")
+		(force-mode-line-update)
 		(dolist (key demon-allow-between-repeats)
 		  (when-let ((binding (key-binding key)))
 		    (define-key map key
 		      (demon--do-repeat real-prefix suffixes binding))))
 		(demon--show-repeat real-prefix suffixes)
-		(let ((exit (set-transient-map map t)))
+		(let ((exit (set-transient-map map t #'demon--end)))
 		  (define-key map (kbd "ESC") (lambda ()
 						(interactive)
-						(funcall exit))))))
+						(funcall exit)
+						(demon--end))))))
 	    (throw 'match t)))))))
 
 (defun demon--do-repeat (real-prefix suffixes binding)
