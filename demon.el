@@ -78,7 +78,7 @@
        (let ((arg (match-string 1 demon-current-keys))
 	     (next (match-string 2 demon-current-keys)))
 	 (cond
-	  ((string= arg "u") (setq demon--prefix-argument '(4)))
+	  ((string= arg "u ") (setq demon--prefix-argument '(4)))
 	  (t (setq demon--prefix-argument (string-to-number (string-replace " " "" arg)))))
 	 (setq demon-current-keys (concat "C-" next)))))
     ("^, \\(u \\|\\(?:[0-9] \\)+\\)"  . (lambda () (setq demon-ignore-binding t)))
