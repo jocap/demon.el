@@ -269,7 +269,7 @@ execution. It is reset to nil at each key press.")
 	       (string-match-p "[^-]-$" keys))
 	   (set-transient-map demon--transient-map))
 	  (t
-	   (message "Demon: %s is undefined" keys)
+	   (message "Demon: %sis undefined" keys)
 	   (demon--end)))))
 
 (defun demon--run (command)
