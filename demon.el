@@ -227,7 +227,8 @@ execution. It is reset to nil at each key press.")
     (dolist (regexps (list demon-pre-regexps demon-post-regexps))
       (dolist (regexp-action regexps)
 	(let ((demon-current-regexp (car regexp-action))
-	      (action (cdr regexp-action)))
+	      (action (cdr regexp-action))
+	      (case-fold-search nil))
 	  ;; Perform replacement or call custom function.
 	  (save-match-data
 	    (when (string-match demon-current-regexp demon-current-keys)
