@@ -65,10 +65,25 @@
 
 (defvar demon-pre-regexps
   '(("C-g" . keyboard-quit)
+
+    ;; Insert literal comma.
     ("ESC" . (lambda () (signal 'demon--quit nil)))
     ("^, ," . (lambda () (demon--do (insert ",")) (signal 'demon--quit nil)))
     ("^, SPC" . (lambda () (demon--do (insert ", ")) (signal 'demon--quit nil)))
     ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
+
+    ;; Automatically add C- after prefix argument.
+    ("^, \\(u\\|[0-9]+\\) \\([^ ]+\\) " .
+     (lambda ()
+       (let ((arg (match-string 1 demon-current-keys))
+	     (next (match-string 2 demon-current-keys)))
+	 (cond
+	  ((string= arg "u") (setq demon--prefix-argument '(4)))
+	  (t (setq demon--prefix-argument (string-to-number arg))))
+	 (setq demon-current-keys (concat "C-" next)))))
+    ("^, \\(u\\|[0-9]+\\) " . (lambda () (setq demon-ignore-binding t)))
+
+    ;; Translate modifiers.
     (", m n " . "C-M-")
     (", - .*" .
      (lambda ()
@@ -162,6 +177,11 @@ in `demon-pre-regexps' and `demon-post-regexps'.")
 (defvar demon-current-regexp ""
   "The currently matching regular expression, available to
 functions in `demon-pre-regexps' and `demon-post-regexps'.")
+(defvar demon-ignore-binding nil
+  "When non-nil, Demon ignores the command bound to
+`demon-current-keys'. This variable may be used by
+`demon-pre-regexps' and `demon-post-regexps' to delay command
+execution. It is reset to nil at each key press.")
 
 ;;;###autoload
 (define-minor-mode demon-mode
@@ -192,6 +212,7 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 (defun demon--next ()
   (interactive)
   (setq demon--keys (concat demon--keys (key-description (this-command-keys)) " "))
+  (setq demon-ignore-binding nil)
   (condition-case nil
       (let ((desc (demon--translate-keys demon--keys)))
 	(if demon--prefix-argument
@@ -221,11 +242,13 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 (defun demon--try-keys (keys)
   (setq keys (replace-regexp-in-string " $" "" keys))
   (let ((binding (condition-case nil (key-binding (kbd keys)) (error nil))))
-    (cond ((commandp binding)
+    (cond ((and (not demon-ignore-binding)
+		(commandp binding))
 	   (demon--run binding)
 	   (unless (demon--try-repeat keys)
 	     (demon--end)))
-	  ((or (keymapp binding)
+	  ((or demon-ignore-binding
+	       (keymapp binding)
 	       (string-match-p "[^-]-$" keys))
 	   (set-transient-map demon--transient-map))
 	  (t
