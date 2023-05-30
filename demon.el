@@ -73,15 +73,15 @@
     ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
 
     ;; Automatically add C- after prefix argument.
-    ("^, \\(u\\|[0-9]+\\) \\([^ ]+\\) " .
+    ("^, \\(u \\|\\(?:[0-9] \\)+\\)\\([^0-9 ]+\\) " .
      (lambda ()
        (let ((arg (match-string 1 demon-current-keys))
 	     (next (match-string 2 demon-current-keys)))
 	 (cond
 	  ((string= arg "u") (setq demon--prefix-argument '(4)))
-	  (t (setq demon--prefix-argument (string-to-number arg))))
+	  (t (setq demon--prefix-argument (string-to-number (string-replace " " "" arg)))))
 	 (setq demon-current-keys (concat "C-" next)))))
-    ("^, \\(u\\|[0-9]+\\) " . (lambda () (setq demon-ignore-binding t)))
+    ("^, \\(u \\|\\(?:[0-9] \\)+\\)"  . (lambda () (setq demon-ignore-binding t)))
 
     ;; Translate modifiers.
     (", m n " . "C-M-")
