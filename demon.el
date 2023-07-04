@@ -54,44 +54,49 @@
 
 (defvar demon-mode-map (make-sparse-keymap))
 
-(defvar demon-activators (list ",")
+(defvar demon-activators (list "," "'")
   "List of keys that activate `demon' when `demon-mode' is active.")
 (dolist (activator demon-activators)
   (define-key demon-mode-map activator #'demon)
   ;; TODO: support `query-replace-map'
   ;; (define-key query-replace-map activator #'demon)
   )
-(define-key demon-mode-map (kbd "C-z") #'set-mark-command)
+
+(defun demon--insert-literal (string)
+  (lambda ()
+    (when (not demon--prefix-argument)
+      (insert string)
+      (signal 'demon--quit nil))))
 
 (defvar demon-pre-regexps
-  '(("C-g" . keyboard-quit)
+  `(("C-g" . keyboard-quit)
 
-    ;; Insert literal comma.
+    ;; Insert literal character.
     ("ESC" . (lambda () (signal 'demon--quit nil)))
-    ("^, ," . (lambda () (demon--do (insert ",")) (signal 'demon--quit nil)))
-    ("^, SPC" . (lambda () (demon--do (insert ", ")) (signal 'demon--quit nil)))
-    ("^, RET" . (lambda () (demon--do (insert ",\n")) (signal 'demon--quit nil)))
+    ("^, ," . ,(demon--insert-literal ","))
+    ("^, SPC" . ,(demon--insert-literal ", "))
+    ("^, RET" . ,(demon--insert-literal ",\n"))
+    ("^' '" . ,(demon--insert-literal "'"))
+    ("^' SPC" . ,(demon--insert-literal "' "))
+    ("^' RET" . ,(demon--insert-literal "'\n"))
 
-    ;; Automatically add C- after prefix argument.
-    ("^, \\(u \\|\\(?:[0-9] \\)+\\)\\([^0-9 ]+\\) " .
-     (lambda ()
-       (let ((arg (match-string 1 demon-current-keys))
-	     (next (match-string 2 demon-current-keys)))
-	 (cond
-	  ((string= arg "u ") (setq demon--prefix-argument '(4)))
-	  (t (setq demon--prefix-argument (string-to-number (string-replace " " "" arg)))))
-	 (setq demon-current-keys (concat "C-" next)))))
-    ("^, \\(u \\|\\(?:[0-9] \\)+\\)"  . (lambda () (setq demon-ignore-binding t)))
+    ;; After +, interpret next input literally.
+    ("\\+ \\([^ ]+\\) " . "\\1")
+    ("\\+ " . "")
 
     ;; Translate modifiers.
-    (", - .*" .
+    ("^[,'] - .*" .
      (lambda ()
        (let ((string (match-string 0 demon-current-keys)))
-	 (setq string (replace-regexp-in-string "^, - " "C-" string))
-	 (setq string (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" string t))
+	 (if (string-prefix-p "," string)
+	     (progn
+	       (setq string (replace-regexp-in-string "^, - " "C-" string))
+	       (setq string (replace-regexp-in-string " \\([^ ]+\\)" " C-\\1" string t)))
+	   (setq string (replace-regexp-in-string "^' - " "M-" string))
+	   (setq string (replace-regexp-in-string " \\([^ ]+\\)" " M-\\1" string t)))
 	 (setq demon-current-keys (replace-match string t nil demon-current-keys)))))
-    (", m " . "M-")
-    (", \\. " . "C-M-")
+
+    ("' " . "M-")
     (", " . "C-"))
   "Association list of regular expressions and
 replacements/functions that are applied to the keys entered when
@@ -129,49 +134,57 @@ processed, which may be modified by the function.")
 replacements/functions that are applied after the application of
 `demon-pre-regexps'.")
 
-(defmacro demon--do (&rest body)
-  `(if (and (boundp 'multiple-cursors-mode) multiple-cursors-mode)
-       (mc/execute-command-for-all-cursors (lambda () (interactive) ,@body))
-     ,@body))
-
 (defvar demon-allow-between-repeats
-  (list (kbd "TAB") (kbd "<tab>") (kbd "RET") (kbd "<return>"))
+  (list (kbd "TAB")
+	(kbd "<tab>")
+	;; (kbd "RET")
+	;; (kbd "<return>")
+	(kbd "C-SPC"))
   "List of key bindings to allow between repeats (see
 `demon-repeats') without cancelling the active repeat map.")
 
 (defvar demon-repeats
   '(("^C-" "v" "V")
-    ("^\\(M\\|C-M\\)-" "v")
+    ("^M-" "v")
+    ("^C-M-" "v" "V")
     ("^\\([CM]\\|C-M\\)-" "a" "e")
     ("^\\([CM]\\|C-M\\)-" "n" "p")
     ("^\\([CM]\\|C-M\\)-" "f" "b")
     ("^\\([CM]\\|C-M\\)-" "k")
     ("^\\([CM]-\\|C-M-\\|C-x \\)" "DEL")
     ("^C-M-" "u" "d")
+    ("^C-M-" "l")
     ("^[CM]-" "y")
     ("^[CM]-" "d")
     ("^C-" "_" "?")
     ("^C-" "l")
+    ("^C-" "o")
     ("^C-" "SPC")
     ("^C-" "z")
+    ("^C-" "K")
     ("^C-" "§")
     ("^M-" "<" ">")
-    ("^M-" "(" ")")
+    ("^\\(C-\\)?M-" "(" ")")
     ("^M-" "{" "}")
     ("^M-" "/")
     ("^M-" "r")
+    ("^M-" "u")
+    ("^M-" "c")
+    ("^M-" "l")
     ("^C-x " "[" "]")
     ("^C-x " "{" "}")
     ("^C-x " "o")
-    ("^C-c C-" "n" "p")
-    ("^C-c " "_" "?"))
+    ("^C-x C-" "x")
+    ("^C-c C-" "t")
+    ("^C-c " "_" "?")
+    ("^C-c w " "w" "a" "s" "d")
+    ("^C-c C-" "n" "p"))
   "Association list of prefixes and repetable suffixes.")
 
 (defvar demon--transient-map
   (let ((map (make-keymap)))
     (set-char-table-range (nth 1 map) t #'demon--next)
     map))
-(defvar demon--auto-control nil)
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
 (defvar demon--keys "")
@@ -203,10 +216,14 @@ execution. It is reset to nil at each key press.")
 
 (defun demon (arg)
   (interactive "P")
-  (setq demon--auto-control nil)
-  (setq demon--last-command last-command)
-  (setq demon--prefix-argument arg)
-  (setq demon--keys (concat (key-description (this-command-keys)) " "))
+  (if (and (boundp 'multiple-cursors-mode) multiple-cursors-mode)
+      (mc/execute-command-for-all-cursors #'self-insert-command)
+    (setq demon--last-command last-command)
+    (setq demon--prefix-argument arg)
+    (setq demon--keys (concat (key-description (this-command-keys)) " "))
+    (demon--activate)))
+
+(defun demon--activate ()
   (demon--show (demon--translate-keys demon--keys))
   (set-transient-map demon--transient-map))
 
@@ -265,15 +282,24 @@ execution. It is reset to nil at each key press.")
   (let ((binding (condition-case nil (demon--key-binding keys) (error nil))))
     (cond ((and (not demon-ignore-binding)
 		(commandp binding))
-	   (demon--run binding)
-	   (unless (demon--try-repeat keys)
-	     (demon--end)))
+	   (if (memq binding '(universal-argument digit-argument negative-argument))
+	       (let ((modifiers (save-match-data
+				  (let ((key (car (last (split-string keys)))))
+				    (string-match "\\(\\(?:[MsCASH]-\\)+\\)" key)
+				    (match-string 1 key)))))
+		 (call-interactively binding t)
+		 (setq demon--prefix-argument prefix-arg)
+		 (setq demon--keys modifiers)
+		 (demon--activate))
+	     (demon--run binding)
+	     (unless (demon--try-repeat keys)
+	       (demon--end))))
 	  ((or demon-ignore-binding
 	       (keymapp binding)
 	       (string-match-p "[^-]-$" keys))
-	   (set-transient-map demon--transient-map))
+	   (demon--activate))
 	  (t
-	   (message "Demon: %sis undefined" keys)
+	   (message "Demon: %s is undefined" (string-trim-right keys))
 	   (demon--end)))))
 
 (defun demon--run (command)
