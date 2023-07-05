@@ -187,6 +187,8 @@ replacements/functions that are applied after the application of
     map))
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
+(defvar demon--shifted nil)
+(defvar demon--meaningfully-shifted nil)
 (defvar demon--keys "")
 (defvar demon--lighter " Demon")
 
@@ -196,6 +198,10 @@ in `demon-pre-regexps' and `demon-post-regexps'.")
 (defvar demon-current-regexp ""
   "The currently matching regular expression, available to
 functions in `demon-pre-regexps' and `demon-post-regexps'.")
+(defvar demon-log-messages t
+  "When non-nil, Demon messages are logged.  Setting
+`demon-log-messages' to nil is equivalent to setting
+`message-log-max' to nil.")
 (defvar demon-ignore-binding nil
   "When non-nil, Demon ignores the command bound to
 `demon-current-keys'. This variable may be used by
@@ -220,6 +226,8 @@ execution. It is reset to nil at each key press.")
       (mc/execute-command-for-all-cursors #'self-insert-command)
     (setq demon--last-command last-command)
     (setq demon--prefix-argument arg)
+    (setq demon--shifted nil)
+    (setq demon--meaningfully-shifted nil)
     (setq demon--keys (concat (key-description (this-command-keys)) " "))
     (demon--activate)))
 
@@ -229,10 +237,16 @@ execution. It is reset to nil at each key press.")
 
 (defun demon--end ())
 
+(defun demon--message (&rest r)
+  (if demon-log-messages
+      (apply #'message r)
+    (let ((message-log-max nil))
+      (apply #'message r))))
+
 (defun demon--show (desc)
   (if demon--prefix-argument
-      (message "%S %s" demon--prefix-argument desc)
-    (message "%s" desc)))
+      (demon--message "%S %s" demon--prefix-argument desc)
+    (demon--message "%s" desc)))
 
 (defun demon--next ()
   (interactive)
@@ -263,23 +277,44 @@ execution. It is reset to nil at each key press.")
 		(funcall action)))))))
     demon-current-keys))
 
-(defun demon--key-binding (keys)
-  (let ((start 0)
-	(binding (key-binding (kbd keys)))
-	(case-fold-search nil))
-    (save-match-data
-      (while (setq start
-		   (string-match "\\(\\(?:[MsCASH]-\\)+\\)\\([A-Z]\\) " keys start))
-	(let* ((modifiers (match-string 1 keys))
-	       (key (downcase (match-string 2 keys)))
-	       (shifted (replace-match (concat modifiers "S-" key) t t keys)))
-	  (when-let (found (key-binding (kbd shifted)))
-	    (setq keys shifted)
-	    (setq binding found)))))
-    binding))
+(defun demon--key-binding (keys &optional no-state)
+  (let* ((case-fold-search nil)
+	 (parts (split-string keys "-"))
+	 (shifted-keys (string-join (mapcar
+				     (lambda (part)
+				       (save-match-data
+					 (when (string-match "^\\([A-Z]\\)\\( .*\\)" part)
+					   (setq part (concat
+						       "S-"
+						       (downcase (match-string 1 part))
+						       (match-string 2 part)))))
+				       part)
+				     parts)
+				    "-"))
+	 (shifted-binding (key-binding (kbd shifted-keys))))
+    (unless no-state
+      (setq demon--meaningfully-shifted (and shifted-binding t))
+      (setq demon--shifted (and (not demon--meaningfully-shifted)
+				(string-match-p "^\\([A-Z]\\) " (car (last parts))))))
+    (or shifted-binding (key-binding (kbd keys)))))
+
+(defun demon--unshift-keys (keys)
+  (if demon--meaningfully-shifted
+      keys
+    (string-join (mapcar
+		  (lambda (part)
+		    (save-match-data
+		      (when (string-match "^\\([A-Z]\\)\\( .*\\)" part)
+			(setq part (concat
+				    (downcase (match-string 1 part))
+				    (match-string 2 part)))))
+		    part)
+		  (split-string keys "-"))
+		 "-")))
 
 (defun demon--try-keys (keys)
   (let ((binding (condition-case nil (demon--key-binding keys) (error nil))))
+    (setq keys (demon--unshift-keys keys))
     (cond ((and (not demon-ignore-binding)
 		(commandp binding))
 	   (if (memq binding '(universal-argument digit-argument negative-argument))
@@ -299,21 +334,23 @@ execution. It is reset to nil at each key press.")
 	       (string-match-p "[^-]-$" keys))
 	   (demon--activate))
 	  (t
-	   (message "Demon: %s is undefined" (string-trim-right keys))
+	   (demon--message "Demon: %s is undefined" (string-trim-right keys))
 	   (demon--end)))))
 
-(defun demon--run (command)
+(defun demon--run (command &optional shifted)
   (let ((current-prefix-arg demon--prefix-argument))
     (setq last-command demon--last-command)
     (setq this-command command)
     (setq this-original-command command)
-    (call-interactively command t)))
+    (let ((this-command-keys-shift-translated (or shifted demon--shifted)))
+      (call-interactively command t))))
 
 (defun demon--try-repeat (keys)
   (catch 'match
     (dolist (prefix-suffixes demon-repeats)
       (let* ((prefix (car prefix-suffixes))
 	     (suffixes (cdr prefix-suffixes))
+	     (shifted-suffixes (mapcar #'upcase suffixes))
 	     (quoted-suffixes (mapcar #'regexp-quote suffixes))
 	     (joined-suffixes (string-join quoted-suffixes "\\|"))
 	     (regexp (concat "\\(" prefix "\\)" "\\(" joined-suffixes "\\)")))
@@ -322,11 +359,16 @@ execution. It is reset to nil at each key press.")
 	    (let ((map (make-sparse-keymap))
 		  (real-prefix (match-string 1 keys))
 		  has-suffixes)
+	      (dolist (suffix shifted-suffixes)
+		(when-let* ((keys (concat real-prefix suffix " "))
+			    (binding (demon--key-binding keys t)))
+		  (define-key map (kbd suffix)
+		    (demon--do-repeat real-prefix suffixes binding t))))
 	      (dolist (suffix suffixes)
 		(when-let* ((keys (concat real-prefix suffix " "))
-			    (binding (demon--key-binding keys)))
+			    (binding (demon--key-binding keys t)))
 		  (define-key map (kbd suffix)
-		    (demon--do-repeat real-prefix suffixes binding))
+		    (demon--do-repeat real-prefix suffixes binding nil))
 		  (setq has-suffixes t)))
 	      (if (not has-suffixes)
 		  (throw 'match nil)
@@ -334,7 +376,7 @@ execution. It is reset to nil at each key press.")
 		(dolist (key demon-allow-between-repeats)
 		  (when-let ((binding (key-binding key)))
 		    (define-key map key
-		      (demon--do-repeat real-prefix suffixes binding))))
+		      (demon--do-repeat real-prefix suffixes binding nil))))
 		(demon--show-repeat real-prefix suffixes)
 		(let ((exit (set-transient-map map t #'demon--end)))
 		  (define-key map (kbd "<escape>") (lambda ()
@@ -343,17 +385,17 @@ execution. It is reset to nil at each key press.")
 						(demon--end))))))
 	    (throw 'match t)))))))
 
-(defun demon--do-repeat (real-prefix suffixes binding)
+(defun demon--do-repeat (real-prefix suffixes binding shifted)
   (lambda ()
     (interactive)
     (setq demon--last-command last-command)
     (demon--show-repeat real-prefix suffixes)
-    (demon--run binding)))
+    (demon--run binding shifted)))
 
 (defun demon--show-repeat (prefix suffixes)
   (if demon--prefix-argument
-	    (message "%S %s%s" demon--prefix-argument prefix suffixes)
-	  (message "%s%s" prefix suffixes)))
+      (demon--message "%S %s%s" demon--prefix-argument prefix suffixes)
+    (demon--message "%s%s" prefix suffixes)))
 
 (provide 'demon)
 ;;; demon.el ends here
