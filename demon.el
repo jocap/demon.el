@@ -52,20 +52,15 @@
 ;; cancel the currently entered Demon key.
 (define-error 'demon--quit "Quit Demon")
 
-(defvar demon-mode-map (make-sparse-keymap))
-
 (defvar demon-activators (list "," "'")
   "List of keys that activate `demon' when `demon-mode' is active.")
-(dolist (activator demon-activators)
-  (define-key demon-mode-map activator #'demon)
-  ;; TODO: support `query-replace-map'
-  ;; (define-key query-replace-map activator #'demon)
-  )
 
 (defun demon--insert-literal (string)
   (lambda ()
     (when (not demon--prefix-argument)
-      (insert string)
+      (dolist (key (split-string string "" t))
+	(let ((last-command-event (string-to-char key)))
+	  (call-interactively demon--original-command)))
       (signal 'demon--quit nil))))
 
 (defvar demon-pre-regexps
@@ -185,6 +180,7 @@ replacements/functions that are applied after the application of
   (let ((map (make-keymap)))
     (set-char-table-range (nth 1 map) t #'demon--next)
     map))
+(defvar demon--original-command nil)
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
 (defvar demon--shifted nil)
@@ -198,7 +194,7 @@ in `demon-pre-regexps' and `demon-post-regexps'.")
 (defvar demon-current-regexp ""
   "The currently matching regular expression, available to
 functions in `demon-pre-regexps' and `demon-post-regexps'.")
-(defvar demon-log-messages t
+(defvar demon-log-messages nil
   "When non-nil, Demon messages are logged.  Setting
 `demon-log-messages' to nil is equivalent to setting
 `message-log-max' to nil.")
@@ -212,13 +208,38 @@ execution. It is reset to nil at each key press.")
 (define-minor-mode demon-mode
   "Local minor mode for Demon key sequences."
   :lighter (:eval demon--lighter)
-  :keymap demon-mode-map)
-
-;; TODO: term-mode support
+  (if demon-mode
+      (progn
+	(advice-add 'self-insert-command :around #'demon--advice)
+	(advice-add 'isearch-printing-char :around #'demon--advice)
+	(dolist (activator demon-activators)
+	  (when (boundp 'embark-general-map)
+	    (define-key embark-general-map activator #'demon--key-for-undefined))
+	  (when (eq (key-binding activator) #'undefined)
+	    (local-set-key activator #'demon--key-for-undefined))))
+    (dolist (activator demon-activators)
+      (when (boundp 'embark-general-map)
+	(define-key embark-general-map activator nil))
+      (when (eq (key-binding activator) #'demon--key-for-undefined)
+	(local-set-key activator #'undefined)))))
 
 ;;;###autoload
 (define-globalized-minor-mode
   global-demon-mode demon-mode demon-mode)
+
+(defun demon--advice (f &rest r)
+  (if (and demon-mode (member (this-command-keys) demon-activators))
+      (progn
+	(setq demon--original-command f)
+	(call-interactively #'demon))
+    (apply f r)))
+
+(defun demon--key-for-undefined ()
+  (interactive)
+  (setq demon--original-command #'undefined)
+  (call-interactively #'demon))
+
+;; TODO: term-mode support
 
 (defun demon (arg)
   (interactive "P")
@@ -338,6 +359,8 @@ execution. It is reset to nil at each key press.")
 	   (demon--end)))))
 
 (defun demon--run (command &optional shifted)
+  (when isearch-mode ;; TODO
+    (isearch-exit))
   (let ((current-prefix-arg demon--prefix-argument))
     (setq last-command demon--last-command)
     (setq this-command command)
