@@ -294,27 +294,27 @@ execution. It is reset to nil at each key press.")
 	 (shifted-binding (key-binding (kbd shifted-keys))))
     (unless no-state
       (setq demon--meaningfully-shifted (and shifted-binding t))
-      (setq demon--shifted (and (not demon--meaningfully-shifted)
-				(string-match-p "^\\([A-Z]\\) " (car (last parts))))))
-    (or shifted-binding (key-binding (kbd keys)))))
+      (setq demon--shifted (string-match-p "^\\([A-Z]\\) " (car (last parts)))))
+    (or shifted-binding
+	(key-binding (kbd keys))
+	(key-binding (kbd (string-replace "S-" "" shifted-keys))))))
 
 (defun demon--unshift-keys (keys)
-  (if demon--meaningfully-shifted
-      keys
-    (string-join (mapcar
-		  (lambda (part)
-		    (save-match-data
-		      (when (string-match "^\\([A-Z]\\)\\( .*\\)" part)
-			(setq part (concat
-				    (downcase (match-string 1 part))
-				    (match-string 2 part)))))
-		    part)
-		  (split-string keys "-"))
-		 "-")))
+  (string-join (mapcar
+		(lambda (part)
+		  (save-match-data
+		    (when (string-match "^\\([A-Z]\\)\\( .*\\)" part)
+		      (setq part (concat
+				  (downcase (match-string 1 part))
+				  (match-string 2 part)))))
+		  part)
+		(split-string keys "-"))
+	       "-"))
 
 (defun demon--try-keys (keys)
   (let ((binding (condition-case nil (demon--key-binding keys) (error nil))))
-    (setq keys (demon--unshift-keys keys))
+    (when (and (not demon--meaningfully-shifted) demon--shifted)
+      (setq keys (demon--unshift-keys keys)))
     (cond ((and (not demon-ignore-binding)
 		(commandp binding))
 	   (if (memq binding '(universal-argument digit-argument negative-argument))
@@ -342,8 +342,11 @@ execution. It is reset to nil at each key press.")
     (setq last-command demon--last-command)
     (setq this-command command)
     (setq this-original-command command)
-    (let ((this-command-keys-shift-translated (or shifted demon--shifted)))
-      (call-interactively command t))))
+    (let ((this-command-keys-shift-translated (or shifted
+						  (and (not demon--meaningfully-shifted)
+						       demon--shifted))))
+      (call-interactively command t))
+    (setq demon--shifted nil)))
 
 (defun demon--try-repeat (keys)
   (catch 'match
