@@ -230,7 +230,8 @@ execution. It is reset to nil at each key press.")
   global-demon-mode demon-mode demon-mode)
 
 (defun demon--advice (f &rest r)
-  (if (and demon-mode (member (this-command-keys) demon-activators))
+  (if (and demon-mode (member (this-command-keys) demon-activators)
+	   (not (and (boundp 'multiple-cursors-mode) multiple-cursors-mode)))
       (progn
 	(setq demon--original-command f)
 	(call-interactively #'demon))
