@@ -158,6 +158,8 @@ replacements/functions that are applied after the application of
     ("^C-" "SPC")
     ("^C-" "z")
     ("^C-" "K")
+    ("^C-" "m")
+    ("^C-" "j")
     ("^C-" "§")
     ("^M-" "<" ">")
     ("^\\(C-\\)?M-" "(" ")")
@@ -211,12 +213,15 @@ execution. It is reset to nil at each key press.")
   :lighter (:eval demon--lighter)
   (if demon-mode
       (progn
+	(with-eval-after-load 'delsel
+	  (advice-add 'delete-selection-pre-hook :around #'demon--selection-pre-hook))
 	(advice-add 'self-insert-command :around #'demon--advice)
 	(advice-add 'isearch-printing-char :around #'demon--advice)
 	(advice-add 'Custom-no-edit :around #'demon--advice)
 	(dolist (activator demon-activators)
 	  (when (boundp 'embark-general-map)
 	    (define-key embark-general-map activator #'demon--key-for-undefined))
+	  ;; You could just as well simply advise `undefined'.
 	  (when (eq (key-binding activator) #'undefined)
 	    (local-set-key activator #'demon--key-for-undefined))))
     (dolist (activator demon-activators)
@@ -228,6 +233,10 @@ execution. It is reset to nil at each key press.")
 ;;;###autoload
 (define-globalized-minor-mode
   global-demon-mode demon-mode demon-mode)
+
+(defun demon--selection-pre-hook (f &rest r)
+  (unless (and demon-mode (member (this-command-keys) demon-activators))
+    (apply f r)))
 
 (defun demon--advice (f &rest r)
   (if (and demon-mode (member (this-command-keys) demon-activators)
