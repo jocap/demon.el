@@ -91,7 +91,8 @@
     ;; Translate modifiers.
     ("[,'] - .*" .
      (lambda ()
-       (let ((string (match-string 0 demon-current-keys)))
+       (let ((string (match-string 0 demon-current-keys))
+	     (case-fold-search nil))
 	 (if (string-prefix-p "," string)
 	     (progn
 	       (setq string (replace-regexp-in-string "^, - " "C-" string))
@@ -123,7 +124,8 @@ processed, which may be modified by the function.")
      (lambda ()
        "Fix incorrect modifier prefixes."
        (let ((string (match-string 0 demon-current-keys))
-	     (modifiers))
+	     (case-fold-search nil)
+	     modifiers)
 	 (dolist (modifier '("A" "C" "H" "M" "S" "s"))
 	   (when (string-match-p modifier string)
 	     (push modifier modifiers)))
@@ -162,9 +164,9 @@ replacements/functions that are applied after the application of
     ("^[CM]-" "d")
     ("^C-" "_" "?")
     ("^C-" "s" "r")
+    ("^C-" "SPC")
     ("^C-" "l")
     ("^C-" "o")
-    ("^C-" "SPC")
     ("^C-" "z")
     ("^C-" "K")
     ("^C-" "m")
@@ -329,9 +331,10 @@ See `demon-override'.")
 	    (when (string-match demon-current-regexp demon-current-keys)
 	      (if (stringp action)
 		  (setq demon-current-keys
-			(replace-regexp-in-string demon-current-regexp
-						  action
-						  demon-current-keys))
+			(let ((case-fold-search nil))
+			  (replace-regexp-in-string demon-current-regexp
+						    action
+						    demon-current-keys)))
 		(funcall action)))))))
     demon-current-keys))
 
@@ -430,9 +433,10 @@ See `demon-override'.")
 	     (shifted-suffixes (mapcar #'upcase suffixes))
 	     (quoted-suffixes (mapcar #'regexp-quote suffixes))
 	     (joined-suffixes (string-join quoted-suffixes "\\|"))
-	     (regexp (concat "\\(" prefix "\\)" "\\(" joined-suffixes "\\)")))
+	     (regexp (concat "\\(" prefix "\\)" "\\(" joined-suffixes "\\)$")))
 	(save-match-data
-	  (when (string-match regexp keys)
+	  (when (let ((case-fold-search nil))
+		  (string-match regexp keys))
 	    (let ((map (make-sparse-keymap))
 		  (real-prefix (match-string 1 keys))
 		  has-suffixes)
