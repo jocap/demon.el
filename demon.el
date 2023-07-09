@@ -58,9 +58,18 @@
 (defun demon--insert-literal (string)
   (lambda ()
     (when (not demon--prefix-argument)
+      (setq last-command demon--last-command)
+      (setq this-command demon--original-command)
+      (setq this-original-command demon--original-command)
+      (when (and (boundp delete-selection-mode)
+		 delete-selection-mode
+		 (use-region-p)
+		 (not buffer-read-only))
+	(delete-selection-helper (and (symbolp this-command)
+                                      (get this-command 'delete-selection))))
       (dolist (key (split-string string "" t))
 	(let ((last-command-event (string-to-char key)))
-	  (call-interactively demon--original-command)))
+	  (call-interactively demon--original-function)))
       (signal 'demon--quit nil))))
 
 (defvar demon-pre-regexps
@@ -80,7 +89,7 @@
     ("\\+ " . "")
 
     ;; Translate modifiers.
-    ("^[,'] - .*" .
+    ("[,'] - .*" .
      (lambda ()
        (let ((string (match-string 0 demon-current-keys)))
 	 (if (string-prefix-p "," string)
@@ -172,6 +181,7 @@ replacements/functions that are applied after the application of
     ("^C-x " "[" "]")
     ("^C-x " "{" "}")
     ("^C-x " "o")
+    ("^C-x 5 " "o")
     ("^C-x C-" "x")
     ("^C-c C-" "t")
     ("^C-c " "_" "?")
@@ -184,6 +194,7 @@ replacements/functions that are applied after the application of
     (set-char-table-range (nth 1 map) t #'demon--next)
     map))
 (defvar demon--original-command nil)
+(defvar demon--original-function nil)
 (defvar demon--last-command nil)
 (defvar demon--prefix-argument nil)
 (defvar demon--shifted nil)
@@ -207,49 +218,63 @@ functions in `demon-pre-regexps' and `demon-post-regexps'.")
 `demon-pre-regexps' and `demon-post-regexps' to delay command
 execution. It is reset to nil at each key press.")
 
+(defvar demon--override
+  '(undefined
+    self-insert-command)
+  "List of functions to override when called by a key in `demon-activators'.
+
+See also `demon-no-override'.")
+
+(defvar demon-no-override nil
+  "List of functions not to override when called by a key in `demon-activators'.
+
+See `demon-override'.")
+
 ;;;###autoload
 (define-minor-mode demon-mode
   "Local minor mode for Demon key sequences."
   :lighter (:eval demon--lighter)
-  (if demon-mode
-      (progn
-	(with-eval-after-load 'delsel
-	  (advice-add 'delete-selection-pre-hook :around #'demon--selection-pre-hook))
-	(advice-add 'self-insert-command :around #'demon--advice)
-	(advice-add 'isearch-printing-char :around #'demon--advice)
-	(advice-add 'Custom-no-edit :around #'demon--advice)
-	(dolist (activator demon-activators)
-	  (when (boundp 'embark-general-map)
-	    (define-key embark-general-map activator #'demon--key-for-undefined))
-	  ;; You could just as well simply advise `undefined'.
-	  (when (eq (key-binding activator) #'undefined)
-	    (local-set-key activator #'demon--key-for-undefined))))
+  (when demon-mode
     (dolist (activator demon-activators)
-      (when (boundp 'embark-general-map)
-	(define-key embark-general-map activator nil))
-      (when (eq (key-binding activator) #'demon--key-for-undefined)
-	(local-set-key activator #'undefined)))))
+      (demon--override activator))
+    (dolist (function demon--override)
+      (advice-add function :around #'demon--advice))
+    (with-eval-after-load 'delsel
+      (advice-add 'delete-selection-pre-hook :around #'demon--selection-pre-hook)))
+  ;; (when (not demon-mode)
+  ;;   (dolist (activator demon-activators)
+  ;;     (when (boundp 'embark-general-map)
+  ;; 	(define-key embark-general-map activator nil))))
+  )
 
 ;;;###autoload
 (define-globalized-minor-mode
-  global-demon-mode demon-mode demon-mode)
+  global-demon-mode demon-mode demon-mode
+  (dolist (activator demon-activators)
+    (demon--override activator)
+    ;; (when (boundp 'embark-general-map) ;; TODO
+    ;;   (define-key embark-general-map activator #'demon))
+    ))
 
-(defun demon--selection-pre-hook (f &rest r)
-  (unless (and demon-mode (member (this-command-keys) demon-activators))
+(defun demon--override (activator)
+  (let ((key-binding (key-binding activator)))
+	    (when (and (not (memq key-binding demon--override))
+		       (not (memq key-binding demon-no-override)))
+	      (push key-binding demon--override))))
+
+(defun demon--selection-pre-hook (f &rest r) ;; TODO
+  (unless (and demon-mode
+	       (member (this-command-keys) demon-activators))
     (apply f r)))
 
 (defun demon--advice (f &rest r)
   (if (and demon-mode (member (this-command-keys) demon-activators)
 	   (not (and (boundp 'multiple-cursors-mode) multiple-cursors-mode)))
       (progn
-	(setq demon--original-command f)
+	(setq demon--original-command this-command)
+	(setq demon--original-function f)
 	(call-interactively #'demon))
     (apply f r)))
-
-(defun demon--key-for-undefined ()
-  (interactive)
-  (setq demon--original-command #'undefined)
-  (call-interactively #'demon))
 
 ;; TODO: term-mode support
 
@@ -360,7 +385,8 @@ execution. It is reset to nil at each key press.")
 		 (setq demon--keys modifiers)
 		 (demon--activate))
 	     (demon--run keys binding)
-	     (unless (demon--try-repeat keys)
+	     (unless (or (memq binding '(isearch-forward isearch-backward))
+			 (demon--try-repeat keys))
 	       (demon--end))))
 	  ((or demon-ignore-binding
 	       (keymapp binding)
@@ -384,6 +410,12 @@ execution. It is reset to nil at each key press.")
     (setq last-command demon--last-command)
     (setq this-command command)
     (setq this-original-command command)
+    (when (and (boundp delete-selection-mode)
+		 delete-selection-mode
+		 (use-region-p)
+		 (not buffer-read-only))
+	(delete-selection-helper (and (symbolp this-command)
+                                      (get this-command 'delete-selection))))
     (let ((this-command-keys-shift-translated (or shifted
 						  (and (not demon--meaningfully-shifted)
 						       demon--shifted))))
