@@ -433,7 +433,7 @@ See `demon-override'.")
 	     (shifted-suffixes (mapcar #'upcase suffixes))
 	     (quoted-suffixes (mapcar #'regexp-quote suffixes))
 	     (joined-suffixes (string-join quoted-suffixes "\\|"))
-	     (regexp (concat "\\(" prefix "\\)" "\\(" joined-suffixes "\\)$")))
+	     (regexp (concat "\\(" prefix "\\)" "\\(" joined-suffixes "\\) $")))
 	(save-match-data
 	  (when (let ((case-fold-search nil))
 		  (string-match regexp keys))
