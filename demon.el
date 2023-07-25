@@ -69,7 +69,11 @@
                                       (get this-command 'delete-selection))))
       (dolist (key (split-string string "" t))
 	(let ((last-command-event (string-to-char key)))
-	  (call-interactively demon--original-function)))
+	  (dolist (function demon--override) (advice-remove function #'demon--advice))
+	  (unwind-protect
+	      (call-interactively demon--original-function)
+	    (dolist (function demon--override) (advice-add function :around #'demon--advice)))
+	  ))
       (signal 'demon--quit nil))))
 
 (defvar demon-pre-regexps
@@ -84,9 +88,9 @@
     ("^' SPC" . ,(demon--insert-literal "' "))
     ("^' RET" . ,(demon--insert-literal "'\n"))
 
-    ;; After +, interpret next input literally.
-    ("\\+ \\([^ ]+\\) " . "\\1")
-    ("\\+ " . "")
+    ;; After period, interpret next input literally.
+    ("\\. \\([^ ]+\\) " . "\\1")
+    ("\\. " . "")
 
     ;; Translate modifiers.
     ("[,'] - .*" .
@@ -159,6 +163,7 @@ replacements/functions that are applied after the application of
     ("^\\([CM]\\|C-M\\)-" "k")
     ("^\\([CM]-\\|C-M-\\|C-x \\)" "DEL")
     ("^C-M-" "u" "d")
+    ("^C-M-" "/")
     ("^C-M-" "l")
     ("^[CM]-" "y")
     ("^[CM]-" "d")
@@ -222,7 +227,8 @@ execution. It is reset to nil at each key press.")
 
 (defvar demon--override
   '(undefined
-    self-insert-command)
+    self-insert-command
+    isearch-printing-char)
   "List of functions to override when called by a key in `demon-activators'.
 
 See also `demon-no-override'.")
@@ -238,7 +244,7 @@ See `demon-override'.")
   :lighter (:eval demon--lighter)
   (when demon-mode
     (dolist (activator demon-activators)
-      (demon--override activator))
+      (demon--find-overrides activator))
     (dolist (function demon--override)
       (advice-add function :around #'demon--advice))
     (with-eval-after-load 'delsel
@@ -258,11 +264,12 @@ See `demon-override'.")
     ;;   (define-key embark-general-map activator #'demon))
     ))
 
-(defun demon--override (activator)
+(defun demon--find-overrides (activator)
   (let ((key-binding (key-binding activator)))
-	    (when (and (not (memq key-binding demon--override))
-		       (not (memq key-binding demon-no-override)))
-	      (push key-binding demon--override))))
+    (when (and (not (eq key-binding 'demon--next))
+	       (not (memq key-binding demon--override))
+	       (not (memq key-binding demon-no-override)))
+      (push key-binding demon--override))))
 
 (defun demon--selection-pre-hook (f &rest r) ;; TODO
   (unless (and demon-mode
@@ -270,7 +277,8 @@ See `demon-override'.")
     (apply f r)))
 
 (defun demon--advice (f &rest r)
-  (if (and demon-mode (member (this-command-keys) demon-activators)
+  (if (and demon-mode
+	   (member (this-command-keys) demon-activators)
 	   (not (and (boundp 'multiple-cursors-mode) multiple-cursors-mode)))
       (progn
 	(setq demon--original-command this-command)
